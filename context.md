@@ -187,3 +187,15 @@ This gives genre and mood the heaviest influence (categorical match = clear user
 # Algorithm Recipe draft
 
 Okay Here is my Algorithm Recipe so far, I want to use a hybrid filtering similar to Spotify's. I want collaborative signals, NLP signals, and I want Content Signals (more of an emphasis on this signal right now since this is a start up but later on I want a more balanced stack). I would like to be able to have collaborative filtering, a cold start strategy and a feedback loop if possible, but understand this might be a later implementation thing. I will for now be realistic and go for a content-based + explicit taste onboarding (ask users what they like upfront) for now, but keeping in mind a "scale of implicit feedback data" for later. The primary weights will be the normal Energy, mood and genere. 
+
+Edited version:
+
+Okay Here is my Algorithm Recipe so far, I want to use a hybrid filtering similar to Spotify's. I want collaborative signals, NLP signals, and I want Content Signals (more of an emphasis on this signal right now since this is a start up but later on I want a more balanced stack). I would like to be able to have collaborative filtering, a cold start strategy and a feedback loop if possible, but understand this might be a later implementation thing. I will for now be realistic and go for a content-based + explicit taste onboarding (ask users what they like upfront) for now, but keeping in mind a "scale of implicit feedback data" for later. The primary weights will be the normal Energy, mood and genere.
+
+For the numerical features like energy, instead of just rewarding higher or lower values I want to score based on how close the song is to what the user actually prefers. So something like 1.0 - abs(song.energy - user.target_energy) — the closer the song is to the user's target, the higher the score. I can multiply that by a weight to control how much it matters.
+
+For the weight hierarchy, genre should be worth the most because that's identity-level — a user who says they like jazz is probably not trying to hear rock no matter what the energy is. Mood comes after that because it's still a strong signal but more contextual, the same user might want chill on some days and intense on others. Energy sits in between because it's continuous so it can be partially right, which a binary genre match can't be.
+
+I also want to separate my scoring logic from my ranking logic. The scoring rule handles one song at a time — it just answers "how well does this song match this user." The ranking rule takes all those scores and decides what actually surfaces, so I can add things later like not recommending the same artist twice in a row or filtering before sorting. Keeping them separate means I can change how I rank without breaking how I score.
+
+

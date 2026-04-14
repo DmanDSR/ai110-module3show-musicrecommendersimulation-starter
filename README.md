@@ -17,18 +17,98 @@ Replace this paragraph with your own summary of what your version does.
 
 ## How The System Works
 
-Explain your design in plain language.
+Real-world recommendation systems like Spotify's do two things at once — they look at what songs have in common (content signals like energy and genre) and they look at what users with similar taste tend to listen to (collaborative signals). This version focuses on the content side, which is realistic for a small catalog without a user base to draw collaborative signals from.
 
-Some prompts to answer:
+The pipeline has three steps:
 
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
+1. **`load_songs()`** reads `data/songs.csv` and returns a list of 19 song dictionaries, converting all numeric columns (energy, tempo_bpm, valence, danceability, acousticness) from raw strings to floats so math can be done on them.
+2. **`score_song()`** acts as the judge. It is called once per song and compares that song's attributes against the user's taste profile, awarding points for genre match, mood match, and energy proximity. It returns both a numeric score and a list of human-readable reasons so every recommendation is explainable (e.g. `"genre match (+2.5); mood miss: chill != happy (+0.0); energy proximity (+1.47)"`).
+3. **`recommend_songs()`** drives the full pipeline. It loops through all 19 songs, calls `score_song` on each one, and then ranks the results using Python's `sorted()`. It returns the top k results as `(song, score, explanation)` tuples.
 
-You can include a simple diagram or bullet list if helpful.
+### Features in Use
 
+**Song object:**
+
+- `genre` — broad style family (pop, jazz, lofi, etc.)
+- `mood` — emotional vibe (chill, intense, relaxed, etc.)
+- `energy` — how loud and intense the song is, 0 to 1
+- `tempo_bpm` — speed of the song
+- `valence` — how positive or bright it sounds, 0 to 1
+- `danceability` — how groove-driven the beat is, 0 to 1
+- `acousticness` — how organic vs. electronic it sounds, 0 to 1
+- `artist` — for later when catalog is bigger
+
+**UserProfile object:**
+
+- `favorite_genre` — what genre they identify with most
+- `favorite_mood` — the vibe they're usually going for
+- `target_energy` — what energy level they want
+- `likes_acoustic` — whether they prefer organic or produced sound
+
+---
+
+### Algorithm Recipe
+
+This system uses **content-based filtering with explicit taste onboarding** — the user tells it their preferences upfront, and every song gets scored against those preferences. Collaborative signals (what users with similar taste listen to) and a feedback loop are planned for a later version once there's enough user data to make them useful.
+
+**Weight hierarchy:**
+
+| Signal | Logic | Points |
+|---|---|---|
+| Genre | Binary match — right genre or not | +2.5 |
+| Mood | Binary match — right mood or not | +1.5 |
+| Energy | Proximity: `(1.0 - abs(song.energy - user.target_energy)) × 1.5` | 0 to +1.5 |
+
+Genre carries the most weight because it's identity-level — a user who says they like jazz is probably not trying to hear rock no matter what the energy is. Mood is weighted second because it's a strong signal but more contextual (the same user might want chill on some days and intense on others). Energy sits below the binary signals but uses a proximity formula instead of a match/no-match check, so a song that's close to the target energy still earns partial credit.
+
+**Scoring and ranking are kept as separate concerns:**
+
+- **Scoring** (`score_song`) — answers "how well does this one song match?" for a single song at a time. No knowledge of other songs.
+- **Ranking** (the `sorted()` call inside `recommend_songs`) — takes all the scored tuples and sorts them highest-to-lowest. `sorted()` is used instead of `.sort()` because it returns a new list without modifying the original catalog. This is the extension point for future rules like no-repeat-artist filters or diversity boosts, without touching the scoring math.
+
+---
+
+### Data Flow
+
+This diagram shows how a single song travels from the CSV file to a ranked recommendation. The scoring box runs once per song; ranking happens after all songs have been scored.
+
+```mermaid
+flowchart TD
+    A["data/songs.csv"] -->|"load_songs()"| B["Song List\n19 song dicts"]
+    C["User Preferences\ngenre · mood · energy"] --> D["recommend_songs()"]
+    B --> D
+
+    D --> E["Pick next song from list"]
+
+    subgraph LOOP["score_song() — runs once per song"]
+        F{"genre match?"}
+        F -->|"yes"| G["+2.5"]
+        F -->|"no"| H["+0.0"]
+        G & H --> I{"mood match?"}
+        I -->|"yes"| J["+1.5"]
+        I -->|"no"| K["+0.0"]
+        J & K --> L["energy proximity\n(1.0 − |song.energy − user.energy|) × 1.5"]
+        L --> M["return (score, explanation)"]
+    end
+
+    E --> F
+    M --> N["add to scored list"]
+    N --> O{"more songs?"}
+    O -->|"yes"| E
+    O -->|"no"| P["sorted() descending\ninside recommend_songs()"]
+    P --> Q["Top K Recommendations\nsong · score · explanation"]
+```
+
+---
+
+### Known Biases
+
+- **Genre dominance** — at +2.5, a genre match outweighs a nearly perfect energy + mood match combined. A genuinely great song in the wrong genre will rarely surface.
+- **Mood miss is costly** — a song that is the right genre and perfect energy but wrong mood loses 1.5 points with no partial credit. The system treats mood as all-or-nothing, which doesn't reflect how listeners actually feel (a slightly-off mood song can still land).
+- **Energy is the only continuous signal** — valence, acousticness, and tempo are not used in v1, so two songs that feel very different can score identically if they share genre, mood, and similar energy.
+- **No discovery** — purely content-based scoring creates a filter bubble. The system keeps recommending songs close to what the user already said they like and has no mechanism to surface something unexpected that might become a favorite.
+
+![alt text](image.png)
 ---
 
 ## Getting Started
